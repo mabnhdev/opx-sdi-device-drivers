@@ -42,6 +42,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <regex.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <dirent.h>
@@ -156,6 +157,14 @@ static t_std_error sdi_get_i2c_device_path_by_sysfs_name(const char *bus_name,
     char i2cdev[PATH_MAX] = {0};
     char name[PATH_MAX] = {0};
     t_std_error rc = SDI_DEVICE_ERR_PARAM;
+    regex_t regex;
+
+    rc = regcomp(&regex, bus_name, REG_NOSUB);
+    if (rc != 0) {
+      SDI_DEVICE_ERRMSG_LOG("%s:%d regcomp of '%s' failed with err %d\n",
+                            __FUNCTION__, __LINE__, bus_name, rc);
+      return SDI_DEVICE_ERRCODE(rc);
+    }
 
     snprintf(i2cdev, PATH_MAX, "%s/class/i2c-dev", SYSFS_PATH);
     if ((dir = opendir(i2cdev)) == NULL) {
@@ -194,7 +203,7 @@ static t_std_error sdi_get_i2c_device_path_by_sysfs_name(const char *bus_name,
             *str = 0;
         }
 
-        if (strncmp(dev_name, (char *)bus_name, NAME_MAX) == 0) {
+        if (regexec(&regex, dev_name, 0, NULL, 0) == 0) {
             snprintf(i2c_dev_path, PATH_MAX, "/dev/%s", ent->d_name);
             rc = STD_ERR_OK;
             break;
