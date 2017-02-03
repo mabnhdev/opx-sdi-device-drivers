@@ -274,6 +274,7 @@ static int sdi_sysfs_find_attr(const char *root, const char *name,
   struct stat stat;
   char dpath[256];
   int err = -ENOENT;
+  int rc;
 
   /* Traverse the directory */
   dp = opendir(root);
@@ -294,8 +295,8 @@ static int sdi_sysfs_find_attr(const char *root, const char *name,
 
     /* Process subdir */
     snprintf(dpath, sizeof(dpath), "%s/%s", root, entry->d_name);
-    err = lstat(dpath, &stat);
-    if (err != 0) {
+    rc = lstat(dpath, &stat);
+    if (rc != 0) {
       err = -errno;
       break;
     }
