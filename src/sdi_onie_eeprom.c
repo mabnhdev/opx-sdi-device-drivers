@@ -122,6 +122,39 @@ static t_std_error sdi_onie_validate_header(sdi_onie_tlv_header *ptlv_hdr, int s
  *
  * return None
  */
+static const uint8_t alphanetworks_iana_num[] = {0x00, 0x00, 0x7c, 0x82};
+#define ALPHANETWORKS_FAN_20500_FBY "FAN-20500-FBY"
+#define ALPHANETWORKS_FAN_20500_BFO "FAN-20500-BFO"
+#define ALPHANETWORKS_PART_NUM_OFFSET 26
+#define ALPHANETWORKS_PART_NUM_LEN 14
+static void sdi_onie_fill_alphanetworks_vendor_extn(sdi_onie_tlv_field *tlv_fld,
+                                                    sdi_entity_parser_t parser_type,
+                                                    sdi_entity_info_t *entity_data)
+{
+    if (parser_type == SDI_ONIE_FAN_EEPROM) {
+
+        /* Extract part number */
+        COPY_BYTES_TO_STRING(entity_data->part_number,
+                  (const char *)&tlv_fld->value[ALPHANETWORKS_PART_NUM_OFFSET],
+                             ALPHANETWORKS_PART_NUM_LEN);
+
+        /* Derive fan details from product name. */
+        if (strcmp(entity_data->prod_name,
+                   ALPHANETWORKS_FAN_20500_FBY) == 0) {
+            entity_data->air_flow = SDI_PWR_AIR_FLOW_NORMAL;
+        } else if (strcmp(entity_data->prod_name,
+                          ALPHANETWORKS_FAN_20500_BFO) == 0) {
+            entity_data->air_flow = SDI_PWR_AIR_FLOW_REVERSE;
+        } else {
+            SDI_DEVICE_ERRMSG_LOG("Unrecognized FAN product name: %s",
+                                  entity_data->prod_name);
+            entity_data->air_flow = SDI_PWR_AIR_FLOW_NORMAL;
+        }
+        entity_data->num_fans = 2;
+        entity_data->max_speed = 21000;
+    }
+}
+
 static void sdi_onie_fill_vendor_extn(sdi_onie_tlv_field *tlv_fld,
                                       sdi_entity_parser_t parser_type,
                                       sdi_entity_info_t *entity_data)
@@ -141,6 +174,13 @@ static void sdi_onie_fill_vendor_extn(sdi_onie_tlv_field *tlv_fld,
     };
 
     memcpy(vendor_extn, tlv_fld->value, tlv_fld->length);
+
+    /** Alpha Networks vendor extension has different format. */
+    if (memcmp(vendor_extn, alphanetworks_iana_num,
+               sizeof(alphanetworks_iana_num)) == 0) {
+        return sdi_onie_fill_alphanetworks_vendor_extn(tlv_fld, parser_type,
+                                                       entity_data);
+    }
 
     static const char premature_end[] = "Premature end of ONIE EEPROM vendor extension";
     static const char invalid_fmt[]   = "Invalid format for ONIE EEPROM vendor extension";
@@ -301,6 +341,7 @@ static void sdi_onie_fill_tlv_entity_info(char *eeprom_buf, sdi_entity_parser_t 
     int tlv_len = 0;
     char *tlv_eeprom = NULL;
     sdi_onie_tlv_field *tlv_fld = NULL;
+    sdi_onie_tlv_field *vendor_extn_tlv_fld = NULL;
     sdi_onie_tlv_header *ptlv_hdr = NULL;
 
     ptlv_hdr = (sdi_onie_tlv_header *)eeprom_buf;
@@ -355,7 +396,8 @@ static void sdi_onie_fill_tlv_entity_info(char *eeprom_buf, sdi_entity_parser_t 
             break;
             
         case SDI_ONIE_VENDOR_EXTN_TAG:
-            sdi_onie_fill_vendor_extn(tlv_fld, parser_type, entity_data);
+            /** Defer processing of Vendor Extension fiels */
+            vendor_extn_tlv_fld = tlv_fld;
             break;
             
         case SDI_ONIE_PART_NO_TAG:
@@ -370,6 +412,9 @@ static void sdi_onie_fill_tlv_entity_info(char *eeprom_buf, sdi_entity_parser_t 
         tlv_fld = (sdi_onie_tlv_field *)tlv_eeprom;
         tlv_len = tlv_len - tlv_fld->length - SDI_TL_FIELD_SIZE;
     }
+
+     if (vendor_extn_tlv_fld)
+         sdi_onie_fill_vendor_extn(vendor_extn_tlv_fld, parser_type, entity_data);
 
     return;
 }
