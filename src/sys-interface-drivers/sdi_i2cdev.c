@@ -159,6 +159,26 @@ static t_std_error sdi_get_i2c_device_path_by_sysfs_name(const char *bus_name,
     t_std_error rc = SDI_DEVICE_ERR_PARAM;
     regex_t regex;
 
+    /*
+     * Some i2c topologies result in duplicate bus names.  In this case,
+     * we don't really have a choice but to specify the name of the
+     * adapter's device.
+     *
+     * This assumes that the platform initialization of the i2c topology
+     * is sufficiently deterministic to ensure the correct binding of
+     * the i2c adpaters.
+     */
+    if (strstr(bus_name, "/dev/") == bus_name) {
+      if (access(bus_name, F_OK) != 0) {
+        rc = SDI_DEVICE_ERRNO;
+        SDI_DEVICE_ERRNO_LOG();
+        return rc;
+      }
+      strncpy(i2c_dev_path, bus_name, PATH_MAX-1);
+      i2c_dev_path[PATH_MAX-1] = '\0';
+      return STD_ERR_OK;
+    }
+
     rc = regcomp(&regex, bus_name, REG_NOSUB);
     if (rc != 0) {
       SDI_DEVICE_ERRMSG_LOG("%s:%d regcomp of '%s' failed with err %d\n",
